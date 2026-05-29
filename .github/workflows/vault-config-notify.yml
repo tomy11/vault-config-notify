@@ -1,0 +1,116 @@
+name: Config Change → Vault Update
+
+# ─── เมื่อไหร่จะ run ─────────────────────────────────────────────
+on:
+  push:
+    branches:
+      - main
+    paths:                        # run เฉพาะเมื่อ file พวกนี้เปลี่ยน
+      - "**/*.yml"
+      - "**/*.yaml"
+      - "**/*.env*"
+      - "**/*.json"
+      - "**/config/**"
+
+# ─── งานที่ต้องทำ ────────────────────────────────────────────────
+jobs:
+  notify-config-changed:
+    name: Detect config changes and notify Discord
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. ดึง code ลงมา (fetch 2 commits เพื่อเปรียบเทียบ)
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      # 2. หา file ที่เปลี่ยนแปลง
+      - name: Get changed config files
+        id: changes
+        run: |
+          # รายชื่อ file ที่เปลี่ยน
+          FILES=$(git diff HEAD~1 HEAD --name-only \
+            | grep -E '\.(yml|yaml|env|json)$' \
+            | grep -v 'node_modules' \
+            || true)
+
+          # เนื้อหา diff (จำกัด 1500 ตัวอักษร ไม่งั้น Discord รับไม่ได้)
+          DIFF=$(git diff HEAD~1 HEAD -- \
+            '*.yml' '*.yaml' '*.env*' '*.json' \
+            | head -c 1500 || true)
+
+          # เขียนลง output
+          {
+            echo "files<<EOF"
+            echo "$FILES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "diff<<EOF"
+            echo "$DIFF"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          # ถ้าไม่มีไฟล์เปลี่ยน ให้หยุด
+          if [ -z "$FILES" ]; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # 3. แจ้ง Discord พร้อม Approve / Reject link
+      - name: Notify Discord
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          # สร้าง URL สำหรับ Approve และ Reject
+          APPROVE_URL="${{ secrets.APPROVAL_SERVER_URL }}/approve?run_id=${{ github.run_id }}&token=${{ secrets.SECRET_TOKEN }}"
+          REJECT_URL="${{ secrets.APPROVAL_SERVER_URL }}/reject?run_id=${{ github.run_id }}&token=${{ secrets.SECRET_TOKEN }}"
+
+          curl -s -X POST "${{ secrets.DISCORD_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            --data "$(cat <<EOF
+          {
+            "embeds": [{
+              "title": "⚙️ Config เปลี่ยนแปลง — รอ Approve อัปเดต Vault",
+              "color": 16776960,
+              "fields": [
+                {
+                  "name": "📁 Files ที่เปลี่ยน",
+                  "value": "\`\`\`\n${{ steps.changes.outputs.files }}\n\`\`\`",
+                  "inline": false
+                },
+                {
+                  "name": "📝 Diff",
+                  "value": "\`\`\`diff\n${{ steps.changes.outputs.diff }}\n\`\`\`",
+                  "inline": false
+                },
+                {
+                  "name": "👤 Push by",
+                  "value": "${{ github.actor }}",
+                  "inline": true
+                },
+                {
+                  "name": "🌿 Branch",
+                  "value": "${{ github.ref_name }}",
+                  "inline": true
+                },
+                {
+                  "name": "✅ Approve อัปเดต Vault",
+                  "value": "$APPROVE_URL",
+                  "inline": false
+                },
+                {
+                  "name": "❌ Reject",
+                  "value": "$REJECT_URL",
+                  "inline": false
+                }
+              ],
+              "footer": {
+                "text": "${{ github.repository }} • run #${{ github.run_id }}"
+              }
+            }]
+          }
+          EOF
+          )"
