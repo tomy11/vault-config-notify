@@ -8,19 +8,21 @@ services:
     ports:
       - "8200:8200"
     environment:
-      VAULT_ADDR: https://127.0.0.1:8200
-      VAULT_API_ADDR: https://vault:8200
-      VAULT_CLUSTER_ADDR: https://vault:8201
+      VAULT_LOCAL_CONFIG: >-
+        {
+          "ui": true,
+          "disable_mlock": true,
+          "storage": {"file": {"path": "/vault/data"}},
+          "listener": [{"tcp": {"address": "0.0.0.0:8200", "tls_disable": "1"}}]
+        }
     volumes:
-      - ./vault/config/vault.hcl:/vault/config/vault.hcl:ro
-      - ./vault/tls:/vault/tls:ro
-      - vault-data:/vault/data
-      - vault-logs:/vault/logs
+      - ./vault/data:/vault/data
+    user: root
     cap_add:
       - IPC_LOCK
-    command: server -config=/vault/config/vault.hcl
+    command: server
     healthcheck:
-      test: ["CMD", "wget", "--no-check-certificate", "-qO-", "https://127.0.0.1:8200/v1/sys/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8200/v1/sys/health"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -36,9 +38,8 @@ services:
     ports:
       - "8300:8300"
     environment:
-      VAULT_ADDR: https://vault:8200
+      VAULT_ADDR: http://vault:8200
       VAULT_TOKEN: ${VAULT_TOKEN}
-      VAULT_SKIP_VERIFY: "true"          # ปิดเมื่อใช้ cert จริง
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL}
       GITHUB_TOKEN: ${GITHUB_TOKEN}
@@ -52,12 +53,8 @@ services:
       timeout: 5s
       retries: 3
 
-volumes:
-  vault-data:
-    driver: local
-  vault-logs:
-    driver: local
 
 networks:
   default:
     name: pipeline-cicd-network
+# test config change
