@@ -43,6 +43,7 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL}
       GITHUB_TOKEN: ${GITHUB_TOKEN}
+      GITHUB_REPO: ${GITHUB_REPO}
       SECRET_TOKEN: ${SECRET_TOKEN:-changeme}
     depends_on:
       vault:

@@ -6,6 +6,9 @@ vault/tls/*.crt
 vault/tls/*.key
 vault/tls/*.pem
 
+# Vault data (เก็บ local เท่านั้น)
+vault/data/
+
 # Python
 __pycache__/
 *.pyc
